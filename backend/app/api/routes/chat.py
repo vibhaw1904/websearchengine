@@ -22,7 +22,7 @@ ANSWER_CLOSE = "</ANSWER>"
 FOLLOW_UPS_OPEN = "<FOLLOW_UPS>"
 FOLLOW_UPS_CLOSE = "</FOLLOW_UPS>"
 
-router = APIRouter(tags=["chat"])
+router = APIRouter(prefix="/api/v1", tags=["chat"])
 
 
 def sse_event(event: str, data: str) -> str:
@@ -87,11 +87,7 @@ async def stream_llm_response(user_message: str, sources: list[dict]):
                 if not delta:
                     continue
 
-                # Append to the full raw transcript rather than a rolling buffer we
-                # clear on each chunk - deltas arrive as tiny sub-token pieces, so a
-                # closing tag like "</ANSWER>" can span several chunks. Re-searching
-                # the ever-growing `raw` string (instead of discarding what's already
-                # been scanned) means we never mistake half a tag for real content.
+                # Growing transcript (not a cleared buffer) so a tag split across chunks is never missed
                 raw += delta
 
                 if not answer_open_found:
@@ -110,9 +106,7 @@ async def stream_llm_response(user_message: str, sources: list[dict]):
                             yield sse_event("answer", new_text)
                         sent_answer_upto = answer_close_idx + len(ANSWER_CLOSE)
                     else:
-                        # Hold back a tail as long as the closing tag minus one char,
-                        # since that tail could still turn into "</ANSWER>" once more
-                        # delta arrives - only emit text guaranteed not to be part of it.
+                        # Hold back a tail long enough to still become "</ANSWER>" later
                         safe_upto = max(sent_answer_upto, len(raw) - (len(ANSWER_CLOSE) - 1))
                         if safe_upto > sent_answer_upto:
                             yield sse_event("answer", raw[sent_answer_upto:safe_upto])
@@ -150,39 +144,29 @@ async def stream_llm_response(user_message: str, sources: list[dict]):
 
 @router.post("/chat")
 async def chat(chat_request: ChatRequest):
-    # get the query from the user
     query = chat_request.query
 
-    #make sure user has access/credits to hit the endpoint
-
-
-
-    # check if we have web search indexed for a similar query
-
-    #  web search to gather resources
+    # TODO: verify user has access/credits to hit the endpoint
+    # TODO: check if we already have a cached web search for a similar query
 
     response = client.search(
-    query=query,
-    search_depth="advanced"
+        query=query,
+        search_depth="advanced",
     )
 
+    web_search_results = response.get("results", [])
+    logger.info("Tavily returned %d results for query: %r", len(web_search_results), query)
 
-    webSearchResults = response.get("results", [])
-    logger.info("Tavily returned %d results for query: %r", len(webSearchResults), query)
-
-    # do some context engineering to create a prompt for the LLM + web search respnses
     user_message = PROMPT_TEMPLATE.substitute(
         user_query=query,
-        search_results=format_search_results(webSearchResults),
+        search_results=format_search_results(web_search_results),
     )
 
-    # trim each result down to what the frontend needs for citations;
     sources = [
         {"title": result.get("title", "Untitled"), "url": result.get("url", "")}
-        for result in webSearchResults
+        for result in web_search_results
     ]
 
-    #hit the LLm and stream back the response to the user
     return StreamingResponse(
         stream_llm_response(user_message, sources),
         media_type="text/event-stream",
