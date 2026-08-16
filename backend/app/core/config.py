@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     database_url: str = ""
     secret_key: str = "change-me"
     tavily_api_key: str = ""
+    openrouter_api_key: str = ""
+    openrouter_model: str = "openai/gpt-4o-mini"
 
 
 settings = Settings()
