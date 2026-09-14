@@ -14,16 +14,20 @@ export interface StreamCallbacks {
 export async function streamChat(
   query: string,
   callbacks: StreamCallbacks,
+  signal?: AbortSignal,
 ): Promise<void> {
   let response: Response
 
   try {
-    response = await fetch('/api/v1/chat', {
+    const apiBase = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+    response = await fetch(`${apiBase}/api/v1/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query }),
+      signal,
     })
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return
     callbacks.onError(err instanceof Error ? err : new Error(String(err)))
     return
   }
@@ -64,7 +68,10 @@ export async function streamChat(
           if (line.startsWith('event:')) {
             eventName = line.slice('event:'.length).trim()
           } else if (line.startsWith('data:')) {
-            dataLine = line.slice('data:'.length).trim()
+            // Strip only the single SSE separator space, not content-leading spaces
+            dataLine = line.startsWith('data: ')
+              ? line.slice('data: '.length)
+              : line.slice('data:'.length)
           }
         }
 
@@ -103,6 +110,7 @@ export async function streamChat(
       }
     }
   } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') return
     callbacks.onError(err instanceof Error ? err : new Error(String(err)))
   } finally {
     reader.releaseLock()

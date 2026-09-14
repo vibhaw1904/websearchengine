@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -145,13 +146,15 @@ async def stream_llm_response(user_message: str, sources: list[dict]):
 @router.post("/chat")
 async def chat(chat_request: ChatRequest):
     query = chat_request.query
+    logger.info("Received chat request: %r", query)
 
     # TODO: verify user has access/credits to hit the endpoint
     # TODO: check if we already have a cached web search for a similar query
 
-    response = client.search(
-        query=query,
-        search_depth="advanced",
+    loop = asyncio.get_event_loop()
+    response = await loop.run_in_executor(
+        None,
+        lambda: client.search(query=query, search_depth="basic"),
     )
 
     web_search_results = response.get("results", [])

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { streamChat, Source } from '../api/chat'
 import Header from '../components/Header'
@@ -18,12 +18,11 @@ export default function ResultsPage() {
   const [isDone, setIsDone] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const cancelRef = useRef<boolean>(false)
-
   useEffect(() => {
     if (!query) return
 
-    cancelRef.current = true
+    const controller = new AbortController()
+
     setAnswer('')
     setSources([])
     setFollowUps([])
@@ -31,38 +30,25 @@ export default function ResultsPage() {
     setIsDone(false)
     setError(null)
 
-    cancelRef.current = false
-
     streamChat(query, {
       onAnswer(chunk) {
-        if (cancelRef.current) return
         setIsLoading(false)
         setAnswer((prev) => prev + chunk)
       },
-      onSources(s) {
-        if (cancelRef.current) return
-        setSources(s)
-      },
-      onFollowUps(q) {
-        if (cancelRef.current) return
-        setFollowUps(q)
-      },
+      onSources(s) { setSources(s) },
+      onFollowUps(q) { setFollowUps(q) },
       onDone() {
-        if (cancelRef.current) return
         setIsLoading(false)
         setIsDone(true)
       },
       onError(err) {
-        if (cancelRef.current) return
         setIsLoading(false)
         setIsDone(true)
         setError(err.message)
       },
-    })
+    }, controller.signal)
 
-    return () => {
-      cancelRef.current = true
-    }
+    return () => { controller.abort() }
   }, [query])
 
   function handleReSearch(q: string) {
@@ -86,20 +72,6 @@ export default function ResultsPage() {
             {/* Thin cyan divider */}
             <div className="border-t border-border-accent opacity-40" />
 
-            {/* Sources */}
-            {sources.length > 0 && (
-              <section>
-                <p className="text-xs font-mono uppercase tracking-widest text-text-secondary mb-1">
-                  Sources
-                </p>
-                <div>
-                  {sources.map((s, i) => (
-                    <SourceCard key={s.url + i} title={s.title} url={s.url} index={i + 1} />
-                  ))}
-                </div>
-              </section>
-            )}
-
             {/* Answer */}
             {(answer || error) && (
               <section>
@@ -119,6 +91,20 @@ export default function ResultsPage() {
                     {answer}
                   </p>
                 )}
+              </section>
+            )}
+
+            {/* Sources */}
+            {sources.length > 0 && (
+              <section>
+                <p className="text-xs font-mono uppercase tracking-widest text-text-secondary mb-1">
+                  Sources
+                </p>
+                <div>
+                  {sources.map((s, i) => (
+                    <SourceCard key={s.url + i} title={s.title} url={s.url} index={i + 1} />
+                  ))}
+                </div>
               </section>
             )}
 
