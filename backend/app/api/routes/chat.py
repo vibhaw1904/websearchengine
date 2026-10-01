@@ -4,9 +4,11 @@ import logging
 import re
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from ...schemas import ChatRequest
+from ...models.user import User
+from ..deps import get_current_user
 from ...core.config import settings
 from ...core.prompt import SYSTEM_PROMPT, PROMPT_TEMPLATE, format_search_results
 from tavily import TavilyClient
@@ -144,7 +146,7 @@ async def stream_llm_response(user_message: str, sources: list[dict]):
 
 
 @router.post("/chat")
-async def chat(chat_request: ChatRequest):
+async def chat(chat_request: ChatRequest, current_user: User = Depends(get_current_user)):
     query = chat_request.query
     logger.info("Received chat request: %r", query)
 
